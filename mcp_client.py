@@ -10,7 +10,7 @@ from contextlib import AsyncExitStack
 
 class MCPClient:
     def __init__(self, api_key: str, notion_api_key: str):
-        self.client = anthropic.Anthropic(api_key=api_key)
+        self.anthropic = anthropic.Anthropic(api_key=api_key)
         # self.notion_tool = NotionMCPTool(notion_api_key)
         self.session: Optional[ClientSession] = None
         self.exit_stack = AsyncExitStack()
@@ -23,7 +23,9 @@ class MCPClient:
         server_params = StdioServerParameters(
             command="npx",
             args=["-y", "@notionhq/notion-mcp-server"],
-            env=None
+            env={
+                "OPENAPI_MCP_HEADERS": "{\"Authorization\":\"Bearer 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\",\"Notion-Version\":\"2022-06-28\"}"
+            }, 
         )
 
         stdio_transport = await self.exit_stack.enter_async_context(stdio_client(server_params))
@@ -36,6 +38,74 @@ class MCPClient:
         response = await self.session.list_tools()
         tools = response.tools
         print("\nConnected to server with tools:", [tool.name for tool in tools])
+
+    async def process_query(self, query: str) -> str:
+        """Process a query using Claude and available tools"""
+        messages = [
+            {
+                "role": "user",
+                "content": query
+            }
+        ]
+
+        response = await self.session.list_tools()
+        available_tools = [{
+            "name": tool.name,
+            "description": tool.description,
+            "input_schema": tool.inputSchema
+        } for tool in response.tools]
+
+        # Initial Claude API call
+        response = self.anthropic.messages.create(
+            model="claude-3-5-sonnet-20241022",
+            max_tokens=8000,
+            messages=messages,
+            tools=available_tools
+        )
+
+        # Process response and handle tool calls
+        final_text = []
+
+        assistant_message_content = []
+        for content in response.content:
+            if content.type == 'text':
+                final_text.append(content.text)
+                assistant_message_content.append(content)
+            elif content.type == 'tool_use':
+                tool_name = content.name
+                tool_args = content.input
+
+                # Execute tool call
+                result = await self.session.call_tool(tool_name, tool_args)
+                final_text.append(f"[Calling tool {tool_name} with args {tool_args}]")
+
+                assistant_message_content.append(content)
+                messages.append({
+                    "role": "assistant",
+                    "content": assistant_message_content
+                })
+                messages.append({
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": content.id,
+                            "content": result.content
+                        }
+                    ]
+                })
+
+                # Get next response from Claude
+                response = self.anthropic.messages.create(
+                    model="claude-3-5-sonnet-20241022",
+                    max_tokens=8000,
+                    messages=messages,
+                    tools=available_tools
+                )
+
+                final_text.append(response.content[0].text)
+
+        return final_text
     
     async def update_tasks_based_on_summary(self, summary: str) -> Dict[str, Any]:
         """
@@ -66,22 +136,9 @@ class MCPClient:
         user_message = f"Here's a summary of recent project work. Please update the appropriate Notion tasks that have been completed:\n\n{summary}"
         
         # Start the conversation
-        response = self.client.messages.create(
-            model="claude-3-opus-20240229",
-            max_tokens=4000,
-            system=system_prompt,
-            messages=[
-                {"role": "user", "content": user_message}
-            ],
-            tools=tools
-        )
+        final_text = await self.process_query(system_prompt + "\n" + user_message)
         
-        print(response.content)
-        
-        # Return the updated tasks
-        return {
-            "message": response.content
-        }
+        print("Final text:", final_text)
 
 if __name__ == "__main__":
     # Example usage
@@ -96,7 +153,7 @@ if __name__ == "__main__":
     
     # Example summary of recent work
     summary = """
-    This week, we made significant progress on Project Alpha. The team successfully designed 
+    This week, we made significant progress on A. The team successfully designed 
     and implemented the database schema with all required tables and relationships. We also 
     created all the API endpoints as specified in the documentation, although we're still 
     working on finalizing authentication which is about 70% complete.
