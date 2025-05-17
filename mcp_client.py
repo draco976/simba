@@ -11,7 +11,7 @@ from contextlib import AsyncExitStack
 class MCPClient:
     def __init__(self, api_key: str, notion_api_key: str):
         self.anthropic = anthropic.Anthropic(api_key=api_key)
-        # self.notion_tool = NotionMCPTool(notion_api_key)
+        self.notion_api_key = notion_api_key
         self.session: Optional[ClientSession] = None
         self.exit_stack = AsyncExitStack()
 
@@ -24,7 +24,7 @@ class MCPClient:
             command="npx",
             args=["-y", "@notionhq/notion-mcp-server"],
             env={
-                "OPENAPI_MCP_HEADERS": "{\"Authorization\":\"Bearer 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\",\"Notion-Version\":\"2022-06-28\"}"
+                "OPENAPI_MCP_HEADERS": "{\"Authorization\":\"Bearer " + self.notion_api_key + "\",\"Notion-Version\":\"2022-06-28\"}"
             }, 
         )
 
@@ -119,21 +119,23 @@ class MCPClient:
             "description": tool.description,
             "input_schema": tool.inputSchema
         } for tool in response.tools]
+
+        page_ids = ['1f689921-161e-8081-83fa-d7ccafc9e72a']
         
         # Create the system prompt
-        system_prompt = """
+        system_prompt = f"""
         You are an assistant that helps update task lists in Notion based on project summaries.
         When given a summary of recent work, you should:
-        1. Get the list of all Notion pages
-        2. For each page, get the details including tasks
-        3. Analyze the summary to determine which tasks have been completed
-        4. Update the status of completed tasks
-        
-        Be thorough in your analysis. For each task, explain your reasoning for marking it as complete.
+        1. Here's the list of page ids in Notion: {str(page_ids)}
+        2. Add the summary to the page with the given id
         """
+
+        # system_prompt = "create a new page title project alpha and add some random tasks to it"
         
         # Create the initial user message with the summary
-        user_message = f"Here's a summary of recent project work. Please update the appropriate Notion tasks that have been completed:\n\n{summary}"
+        user_message = f"Here's a summary of recent project work: \n\n{summary}"
+
+        # user_message = ""
         
         # Start the conversation
         final_text = await self.process_query(system_prompt + "\n" + user_message)
