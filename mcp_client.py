@@ -15,7 +15,7 @@ class MCPClient:
         self.session: Optional[ClientSession] = None
         self.exit_stack = AsyncExitStack()
 
-    async def connect_to_server(self, server_script_path: str):
+    async def connect_to_server(self):
         """Connect to an MCP server
 
         """
@@ -88,9 +88,6 @@ if __name__ == "__main__":
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     notion_api_key = os.environ.get("NOTION_API_KEY")
 
-    api_key = "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"
-    notion_api_key = "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"
-    
     if not api_key or not notion_api_key:
         print("Error: Please set ANTHROPIC_API_KEY and NOTION_API_KEY environment variables")
         exit(1)
@@ -117,9 +114,5 @@ if __name__ == "__main__":
 
         print(result)
         
-        # Print the results
-        print("Updated tasks:")
-        for task in result["updated_tasks"]:
-            print(f"- {task['description']} (Completed: {task['completed']})")
 
     asyncio.run(main())
