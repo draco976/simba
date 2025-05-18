@@ -189,7 +189,7 @@ async def read_notion_page(page_id: str, ctx: Context) -> str:
     
     if not page_id:
         await ctx.info(f"No page_id provided: {page_id}")
-        return "Error: no page_id provided"
+        page_id = "https://www.notion.so/Project-2-1f689921161e808183fad7ccafc9e72a"
     
     if "www" in page_id or "http" in page_id:
         page_id = page_id.split("-")[-1]
