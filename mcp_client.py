@@ -39,14 +39,8 @@ class MCPClient:
         tools = response.tools
         print("\nConnected to server with tools:", [tool.name for tool in tools])
 
-    async def process_query(self, query: str) -> str:
+    async def process_query(self, messages) -> str:
         """Process a query using Claude and available tools"""
-        messages = [
-            {
-                "role": "user",
-                "content": query
-            }
-        ]
 
         response = await self.session.list_tools()
         available_tools = [{
@@ -95,17 +89,12 @@ class MCPClient:
                     ]
                 })
 
-                # Get next response from Claude
-                response = self.anthropic.messages.create(
-                    model="claude-3-5-sonnet-20241022",
-                    max_tokens=8000,
-                    messages=messages,
-                    tools=available_tools
-                )
+                print(final_text)
 
-                final_text.append(response.content[0].text)
+                return await self.process_query(messages)
 
         return final_text
+
     
     async def update_tasks_based_on_summary(self, summary: str) -> Dict[str, Any]:
         """
@@ -120,14 +109,16 @@ class MCPClient:
             "input_schema": tool.inputSchema
         } for tool in response.tools]
 
-        page_ids = ['1f689921-161e-8081-83fa-d7ccafc9e72a']
+        page_ids = ['1f689921-161e-8081-83fa-d7ccafc9e72a', '1f689921-161e-805f-a077-caae6891688c']
         
         # Create the system prompt
         system_prompt = f"""
-        You are an assistant that helps update task lists in Notion based on project summaries.
+        You are an assistant that helps update task lists in Notion based on project summaries. Use only API-retrieve-a-page and API-patch-page tools.
         When given a summary of recent work, you should:
         1. Here's the list of page ids in Notion: {str(page_ids)}
-        2. Add the summary to the page with the given id
+        2. The pages have a task list in the title.
+        3. You should determine which tasks have been completed based on the summary.
+        4. Write Done at the end of completed tasks.
         """
 
         # system_prompt = "create a new page title project alpha and add some random tasks to it"
@@ -136,9 +127,16 @@ class MCPClient:
         user_message = f"Here's a summary of recent project work: \n\n{summary}"
 
         # user_message = ""
+
+        messages = [
+            {
+                "role": "user",
+                "content": system_prompt + "\n" + user_message
+            }
+        ]
         
         # Start the conversation
-        final_text = await self.process_query(system_prompt + "\n" + user_message)
+        final_text = await self.process_query(messages)
         
         print("Final text:", final_text)
 
@@ -155,13 +153,11 @@ if __name__ == "__main__":
     
     # Example summary of recent work
     summary = """
-    This week, we made significant progress on A. The team successfully designed 
+    This week, we made significant progress on Project Alpha. The team successfully designed 
     and implemented the database schema with all required tables and relationships. We also 
-    created all the API endpoints as specified in the documentation, although we're still 
-    working on finalizing authentication which is about 70% complete.
+    created all the API endpoints as specified in the documentation.
     
-    For Project Beta, we completed the technology research phase and identified the stack 
-    we'll be using for the prototype. The prototype itself is still in development.
+    For Project Beta, we completed the technology research phase.
     """
     
     import asyncio
